@@ -1,0 +1,10 @@
+.DS_Store
+
+frontend/node_modules/
+frontend/dist/
+frontend/.tsbuild/
+frontend/coverage/
+
+backend/.gradle/
+backend/build/
+backend/target/

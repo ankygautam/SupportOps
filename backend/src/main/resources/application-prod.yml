@@ -1,0 +1,7 @@
+app:
+  demo:
+    enabled: false
+
+logging:
+  level:
+    com.supportops.backend: INFO
