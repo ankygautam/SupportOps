@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowUpRight, Clock3, Flag, LifeBuoy, Siren, UserRound } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
+import { queryStaleTimes } from "@/app/config/query";
 import { Button } from "@/components/forms/Button";
 import { SelectField } from "@/components/forms/SelectField";
 import { TextInput } from "@/components/forms/TextInput";
@@ -52,7 +53,10 @@ export function TicketDetailPage() {
   const [closeNotes, setCloseNotes] = useState("");
   const [reopenReason, setReopenReason] = useState("");
 
-  const usersQuery = useApiQuery([], async () => (await getUsers()).map(mapUser), { enabled: true });
+  const usersQuery = useApiQuery([], async () => (await getUsers()).map(mapUser), {
+    enabled: true,
+    staleTimeMs: queryStaleTimes.directory,
+  });
   const incidentsQuery = useApiQuery(
     [usersQuery.data?.length],
     async () => (await getIncidents()).map((incident) => mapIncident(incident, usersQuery.data ?? [])),
@@ -107,7 +111,7 @@ export function TicketDetailPage() {
     return <EmptyState title="Loading ticket" description="Pulling the latest customer context, ownership history, and operational workflow state." />;
   }
 
-  if (ticketQuery.error || !ticketQuery.data) {
+  if ((ticketQuery.error && !ticketQuery.data) || !ticketQuery.data) {
     return (
       <PageErrorState
         title="Ticket unavailable"

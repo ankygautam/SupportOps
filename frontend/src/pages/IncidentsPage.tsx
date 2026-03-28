@@ -1,6 +1,8 @@
 import { useDeferredValue, useEffect, useState } from "react";
 import { Plus, RefreshCcw } from "lucide-react";
+import { queryStaleTimes } from "@/app/config/query";
 import { defaultTablePageSizes } from "@/app/config/options";
+import { storageKeys } from "@/app/config/storage";
 import { CreateIncidentModal, type NewIncidentValues } from "@/components/incidents/CreateIncidentModal";
 import { IncidentDrawer } from "@/components/incidents/IncidentDrawer";
 import { IncidentsFiltersBar, type IncidentsFiltersState } from "@/components/incidents/IncidentsFiltersBar";
@@ -18,6 +20,7 @@ import { mapIncident, mapUser } from "@/api/mappers";
 import { useToast } from "@/contexts/ToastContext";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { useUrlQueryState } from "@/hooks/useUrlQueryState";
+import { getLocalStorageItem, removeLocalStorageItem, setLocalStorageItem } from "@/lib/browserStorage";
 
 const initialFilters: IncidentsFiltersState = {
   severity: "",
@@ -63,7 +66,7 @@ function toApiIncidentStatus(value: IncidentsFiltersState["status"] | NewInciden
 
 export function IncidentsPage() {
   const { pushToast } = useToast();
-  const initialSavedView = typeof window === "undefined" ? "" : window.localStorage.getItem("supportops:incidents-view") ?? "";
+  const initialSavedView = getLocalStorageItem(storageKeys.incidentsView) ?? "";
   const { state: urlState, setState: setUrlState } = useUrlQueryState({
     q: "",
     severity: "",
@@ -99,7 +102,10 @@ export function IncidentsPage() {
     }
   }, [savedViewId, setUrlState]);
 
-  const usersQuery = useApiQuery([], async () => (await getUsers()).map(mapUser), { enabled: true });
+  const usersQuery = useApiQuery([], async () => (await getUsers()).map(mapUser), {
+    enabled: true,
+    staleTimeMs: queryStaleTimes.directory,
+  });
   const incidentsQuery = useApiQuery(
     [reloadKey, deferredSearch, filters.severity, filters.status],
     async () => {
@@ -145,12 +151,12 @@ export function IncidentsPage() {
   function applySavedView(viewId: string) {
     const nextView = savedIncidentViews.find((view) => view.id === viewId);
     if (!nextView) {
-      localStorage.removeItem("supportops:incidents-view");
+      removeLocalStorageItem(storageKeys.incidentsView);
       setUrlState({ view: "", page: 1 });
       return;
     }
 
-    localStorage.setItem("supportops:incidents-view", viewId);
+    setLocalStorageItem(storageKeys.incidentsView, viewId);
     setUrlState({
       view: viewId,
       q: nextView.query ?? "",
@@ -232,7 +238,7 @@ export function IncidentsPage() {
             type="button"
             variant="secondary"
             onClick={() => {
-              localStorage.removeItem("supportops:incidents-view");
+              removeLocalStorageItem(storageKeys.incidentsView);
               setUrlState({ q: "", ...initialFilters, page: 1, view: "" });
             }}
           >

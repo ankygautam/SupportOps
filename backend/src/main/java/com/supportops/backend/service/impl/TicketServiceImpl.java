@@ -16,6 +16,7 @@ import com.supportops.backend.entity.User;
 import com.supportops.backend.enums.RoleType;
 import com.supportops.backend.enums.NotificationType;
 import com.supportops.backend.enums.SlaState;
+import com.supportops.backend.enums.TicketPriority;
 import com.supportops.backend.enums.TicketStatus;
 import com.supportops.backend.exception.BadRequestException;
 import com.supportops.backend.exception.ResourceNotFoundException;
@@ -79,23 +80,18 @@ public class TicketServiceImpl implements TicketService {
     @Transactional(readOnly = true)
     public List<TicketSummaryResponse> getTickets(TicketQuery query) {
         String normalizedQuery = QueryUtils.normalizeSearch(query.q());
+        TicketStatus status = parseTicketStatus(query.status());
+        TicketPriority priority = parseTicketPriority(query.priority());
+        SlaState slaState = parseSlaState(query.slaState());
 
-        return ticketRepository.findAllByOrderByUpdatedAtDesc().stream()
-                .filter(ticket -> normalizedQuery.isBlank()
-                        || ticket.getId().toLowerCase().contains(normalizedQuery)
-                        || ticket.getSubject().toLowerCase().contains(normalizedQuery)
-                        || ticket.getCustomer().getCompany().toLowerCase().contains(normalizedQuery)
-                        || ticket.getCustomer().getName().toLowerCase().contains(normalizedQuery)
-                        || (ticket.getEscalationReason() != null && ticket.getEscalationReason().toLowerCase().contains(normalizedQuery)))
-                .filter(ticket -> QueryUtils.isBlank(query.status()) || ticket.getStatus().name().equalsIgnoreCase(query.status()))
-                .filter(ticket -> QueryUtils.isBlank(query.priority()) || ticket.getPriority().name().equalsIgnoreCase(query.priority()))
-                .filter(ticket -> QueryUtils.isBlank(query.assignedAgentId())
-                        || (ticket.getAssignedAgent() != null && ticket.getAssignedAgent().getId().equals(query.assignedAgentId())))
-                .filter(ticket -> QueryUtils.isBlank(query.customerId()) || ticket.getCustomer().getId().equals(query.customerId()))
-                .filter(ticket -> {
-                    SlaState resolved = TicketSlaResolver.resolve(ticket.getSlaRecord());
-                    return QueryUtils.isBlank(query.slaState()) || resolved.name().equalsIgnoreCase(query.slaState());
-                })
+        return ticketRepository.searchTickets(
+                        normalizedQuery,
+                        status,
+                        priority,
+                        QueryUtils.isBlank(query.assignedAgentId()) ? null : query.assignedAgentId().trim(),
+                        QueryUtils.isBlank(query.customerId()) ? null : query.customerId().trim(),
+                        slaState
+                ).stream()
                 .sorted(Comparator.comparing(Ticket::getUpdatedAt).reversed())
                 .map(ticket -> ticketMapper.toSummary(ticket, ticket.getSlaRecord()))
                 .toList();
@@ -111,10 +107,8 @@ public class TicketServiceImpl implements TicketService {
     @Override
     @Transactional
     public TicketSummaryResponse createTicket(CreateTicketRequest request) {
-        Customer customer = customerRepository.findById(request.customerId())
-                .orElseThrow(() -> new ResourceNotFoundException("Customer not found."));
-        User assignedAgent = userRepository.findById(request.assignedAgentId())
-                .orElseThrow(() -> new ResourceNotFoundException("Assigned agent not found."));
+        Customer customer = resolveCustomer(request.customerId());
+        User assignedAgent = resolveRequiredAssignedAgent(request.assignedAgentId());
         Incident relatedIncident = resolveIncident(request.relatedIncidentId());
 
         Ticket ticket = ticketMapper.toEntity(request, nextTicketId(), customer, assignedAgent, relatedIncident);
@@ -138,8 +132,7 @@ public class TicketServiceImpl implements TicketService {
                     "Ticket linked to incident " + relatedIncident.getId() + " (" + relatedIncident.getTitle() + ").", actorName);
         }
         if (savedTicket.getWaitingSince() != null) {
-            activityLogService.log("TICKET", savedTicket.getId(), "WAITING_ON_CUSTOMER",
-                    "Ticket is waiting on customer confirmation or data.", actorName);
+            logEvent(savedTicket, "WAITING_ON_CUSTOMER", "Ticket is waiting on customer confirmation or data.", actorName);
         }
 
         return ticketMapper.toSummary(savedTicket, slaRecord);
@@ -347,13 +340,7 @@ public class TicketServiceImpl implements TicketService {
             activityLogService.log("TICKET", ticket.getId(), "ASSIGNED",
                     "Ticket assigned to " + ticket.getAssignedAgent().getFullName() + ".", actor.getFullName());
             if (ticket.getAssignedAgent() != null) {
-                notificationService.create(
-                        ticket.getAssignedAgent(),
-                        NotificationType.TICKET_ASSIGNED,
-                        "Ticket assigned to you",
-                        ticket.getId() + " is now owned by you.",
-                        "/tickets/" + ticket.getId()
-                );
+                notifyAssignedAgent(ticket, "Ticket assigned to you", ticket.getId() + " is now owned by you.");
             }
         }
 
@@ -382,13 +369,7 @@ public class TicketServiceImpl implements TicketService {
             activityLogService.log("TICKET", ticket.getId(), "ESCALATED",
                     "Escalated to " + ticket.getEscalatedToTeam() + " because " + ticket.getEscalationReason(), actor.getFullName());
             if (ticket.getAssignedAgent() != null) {
-                notificationService.create(
-                        ticket.getAssignedAgent(),
-                        NotificationType.TICKET_ESCALATED,
-                        "Ticket escalated",
-                        ticket.getId() + " was escalated to " + ticket.getEscalatedToTeam() + ".",
-                        "/tickets/" + ticket.getId()
-                );
+                notifyEscalation(ticket);
             }
         }
 
@@ -424,8 +405,45 @@ public class TicketServiceImpl implements TicketService {
     }
 
     private Ticket getTicketEntity(String id) {
-        return ticketRepository.findById(id)
+        return ticketRepository.findDetailedById(id)
+                .or(() -> ticketRepository.findById(id))
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket not found."));
+    }
+
+    private TicketStatus parseTicketStatus(String status) {
+        if (QueryUtils.isBlank(status)) {
+            return null;
+        }
+
+        try {
+            return TicketStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new BadRequestException("Invalid ticket status filter.");
+        }
+    }
+
+    private TicketPriority parseTicketPriority(String priority) {
+        if (QueryUtils.isBlank(priority)) {
+            return null;
+        }
+
+        try {
+            return TicketPriority.valueOf(priority.trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new BadRequestException("Invalid ticket priority filter.");
+        }
+    }
+
+    private SlaState parseSlaState(String state) {
+        if (QueryUtils.isBlank(state)) {
+            return null;
+        }
+
+        try {
+            return SlaState.valueOf(state.trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new BadRequestException("Invalid SLA filter.");
+        }
     }
 
     private User resolveAssignedAgent(String assignedAgentId, User fallback) {
@@ -433,8 +451,17 @@ public class TicketServiceImpl implements TicketService {
             return fallback;
         }
 
+        return resolveRequiredAssignedAgent(assignedAgentId);
+    }
+
+    private User resolveRequiredAssignedAgent(String assignedAgentId) {
         return userRepository.findById(assignedAgentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Assigned agent not found."));
+    }
+
+    private Customer resolveCustomer(String customerId) {
+        return customerRepository.findById(customerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found."));
     }
 
     private Incident resolveIncident(String incidentId) {
@@ -494,6 +521,38 @@ public class TicketServiceImpl implements TicketService {
             case MEDIUM -> 960;
             case LOW -> 1440;
         };
+    }
+
+    private void notifyAssignedAgent(Ticket ticket, String title, String description) {
+        if (ticket.getAssignedAgent() == null) {
+            return;
+        }
+
+        notificationService.create(
+                ticket.getAssignedAgent(),
+                NotificationType.TICKET_ASSIGNED,
+                title,
+                description,
+                "/tickets/" + ticket.getId()
+        );
+    }
+
+    private void notifyEscalation(Ticket ticket) {
+        if (ticket.getAssignedAgent() == null) {
+            return;
+        }
+
+        notificationService.create(
+                ticket.getAssignedAgent(),
+                NotificationType.TICKET_ESCALATED,
+                "Ticket escalated",
+                ticket.getId() + " was escalated to " + ticket.getEscalatedToTeam() + ".",
+                "/tickets/" + ticket.getId()
+        );
+    }
+
+    private void logEvent(Ticket ticket, String action, String description, String actorName) {
+        activityLogService.log("TICKET", ticket.getId(), action, description, actorName);
     }
 
     private String nextTicketId() {

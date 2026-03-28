@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { appFeatureFlags } from "@/app/config/features";
+import { storageKeys } from "@/app/config/storage";
 import { ArrowRight, ShieldCheck, TimerReset, Waves } from "lucide-react";
 import { ApiStatusNotice } from "@/components/ui/ApiStatusNotice";
 import { demoAccounts, defaultDemoAccount } from "@/data/authData";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
+import { getLocalStorageItem, removeLocalStorageItem } from "@/lib/browserStorage";
 
 const featureCards = [
   {
@@ -27,7 +31,8 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { signIn } = useAuth();
-  const preferredLandingPage = typeof window !== "undefined" ? window.localStorage.getItem("supportops:landing-page") : null;
+  const { pushToast } = useToast();
+  const preferredLandingPage = getLocalStorageItem(storageKeys.landingPage);
   const redirectTo = (location.state as { from?: string } | null)?.from ?? preferredLandingPage ?? "/dashboard";
   const [email, setEmail] = useState(defaultDemoAccount.email);
   const [password, setPassword] = useState(defaultDemoAccount.password);
@@ -37,17 +42,13 @@ export function LoginPage() {
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const authFeedback = window.localStorage.getItem("supportops:auth-feedback");
+    const authFeedback = getLocalStorageItem(storageKeys.authFeedback);
     if (!authFeedback) {
       return;
     }
 
     setNotice(authFeedback);
-    window.localStorage.removeItem("supportops:auth-feedback");
+    removeLocalStorageItem(storageKeys.authFeedback);
   }, []);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -64,6 +65,11 @@ export function LoginPage() {
       return;
     }
 
+    pushToast({
+      tone: "success",
+      title: "Signed in",
+      description: "Your SupportOps workspace is ready.",
+    });
     navigate(redirectTo, { replace: true });
   }
 
@@ -96,19 +102,29 @@ export function LoginPage() {
                 for high-pressure support teams.
               </p>
               <div className="mt-5 flex flex-wrap gap-4">
-                <Link
-                  to="/demo"
-                  className="inline-flex items-center gap-2 text-sm font-semibold text-sky-200 transition hover:text-white"
-                >
-                  Open guided demo
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
+                {appFeatureFlags.demoExperience ? (
+                  <Link
+                    to="/demo"
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-sky-200 transition hover:text-white"
+                  >
+                    Open guided demo
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                ) : null}
                 <Link
                   to="/about"
                   className="inline-flex items-center gap-2 text-sm font-semibold text-slate-300 transition hover:text-white"
                 >
                   About the project
                 </Link>
+                {appFeatureFlags.demoExperience ? (
+                  <Link
+                    to="/launch-checklist"
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-slate-300 transition hover:text-white"
+                  >
+                    Launch checklist
+                  </Link>
+                ) : null}
               </div>
 
               <div className="mt-8 rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur">
@@ -157,6 +173,11 @@ export function LoginPage() {
 
             <div className="mb-6">
               <ApiStatusNotice />
+            </div>
+
+            <div className="mb-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Demo roles</p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">Pick a role to prefill its account and review access before signing in.</p>
             </div>
 
             <div className="mb-6 grid gap-3 md:grid-cols-3">
@@ -238,18 +259,28 @@ export function LoginPage() {
               </button>
             </form>
 
-            <div className="mt-8 rounded-3xl bg-slate-50 p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Demo Access</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-900">Use any listed role with password `supportops`</p>
+            {appFeatureFlags.demoExperience ? (
+              <div className="mt-8 rounded-3xl bg-slate-50 p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Demo Access</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-900">All demo roles use the password `supportops`</p>
+                  </div>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">JWT Auth</span>
                 </div>
-                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">JWT Auth</span>
+                <p className="mt-3 text-sm leading-6 text-slate-500">
+                  Admin opens the full platform, Team Lead focuses on queue health and incidents, and Support Agent enters the frontline workspace.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Link to="/demo" className="text-sm font-semibold text-sky-700 transition hover:text-sky-800">
+                    Open guided demo
+                  </Link>
+                  <Link to="/launch-checklist" className="text-sm font-semibold text-slate-700 transition hover:text-slate-900">
+                    Review launch checklist
+                  </Link>
+                </div>
               </div>
-              <p className="mt-3 text-sm leading-6 text-slate-500">
-                After sign-in you&apos;ll receive a demo JWT-backed session and be routed into the protected workspace.
-              </p>
-            </div>
+            ) : null}
           </div>
         </section>
       </div>

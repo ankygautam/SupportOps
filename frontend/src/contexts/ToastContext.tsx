@@ -28,12 +28,21 @@ const toneIcons = {
   info: Info,
 } as const;
 
+const maxVisibleToasts = 3;
+
+function sameToast(a: Omit<ToastItem, "id">, b: Omit<ToastItem, "id">) {
+  return a.tone === b.tone && a.title === b.title && a.description === b.description;
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const pushToast = useCallback((toast: Omit<ToastItem, "id">) => {
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    setToasts((current) => [...current, { ...toast, id }]);
+    setToasts((current) => {
+      const withoutDuplicates = current.filter((item) => !sameToast(item, toast));
+      return [...withoutDuplicates, { ...toast, id }].slice(-maxVisibleToasts);
+    });
     window.setTimeout(() => {
       setToasts((current) => current.filter((item) => item.id !== id));
     }, 3200);

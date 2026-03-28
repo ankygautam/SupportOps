@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { queryStaleTimes } from "@/app/config/query";
 import { AnalyticsFiltersBar } from "@/components/analytics/AnalyticsFiltersBar";
 import { DistributionCard } from "@/components/analytics/DistributionCard";
 import { OperationalInsightsCard } from "@/components/analytics/OperationalInsightsCard";
@@ -30,7 +31,7 @@ export function AnalyticsPage() {
 
       return { summary, teamPerformance, issues };
     },
-    { enabled: true },
+    { enabled: true, staleTimeMs: queryStaleTimes.analytics },
   );
 
   function queueExport() {
@@ -64,7 +65,7 @@ export function AnalyticsPage() {
         <Badge tone="success">Leadership snapshot</Badge>
       </div>
 
-      {analyticsQuery.error || !data ? (
+      {(analyticsQuery.error && !data) || !data ? (
         analyticsQuery.loading ? (
           <div className="grid gap-5 xl:grid-cols-4">
             {Array.from({ length: 4 }).map((_, index) => (

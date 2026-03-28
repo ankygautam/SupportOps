@@ -68,11 +68,29 @@ export function DemoPage() {
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
+                to="/launch-checklist"
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                Launch checklist
+              </Link>
+              <Link
                 to="/login"
                 className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
               >
                 Go to login
               </Link>
+            </div>
+            <div className="mt-8 rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-200">Demo access</p>
+                  <p className="mt-2 text-base font-semibold text-white">All demo roles use the password <span className="rounded-full bg-white/10 px-3 py-1 text-sm text-sky-100">supportops</span></p>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">Choose a role card below to enter the workspace in one step and follow the checklist that matches that perspective.</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-sm text-slate-200">
+                  JWT-backed demo environment
+                </div>
+              </div>
             </div>
             <div className="mt-8 grid gap-4 md:grid-cols-3">
               {demoStoryCards.map((card) => {
@@ -124,6 +142,7 @@ export function DemoPage() {
               <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-slate-200">
                 <p className="font-semibold">{guide.email}</p>
                 <p className="mt-1 text-slate-400">Password: {guide.password}</p>
+                <p className="mt-3 text-sm leading-6 text-slate-300">{demoAccountsSummary(guide.role)}</p>
               </div>
               <button
                 type="button"
@@ -167,11 +186,22 @@ export function DemoPage() {
               ))}
             </div>
             <p className="mt-4 text-sm leading-7 text-slate-300">
-              The strongest showcase flow is dashboard, tickets list, ticket detail, incidents, analytics, and team management. Each view is populated with related seeded data so screenshots and walkthroughs feel coherent.
+              The strongest showcase flow is dashboard, tickets list, ticket detail, incidents, analytics, and team management. Each view is populated with related seeded data so screenshots and walkthroughs feel coherent from one role to the next.
             </p>
           </section>
         </div>
       </div>
     </div>
   );
+}
+
+function demoAccountsSummary(role: "ADMIN" | "TEAM_LEAD" | "SUPPORT_AGENT") {
+  switch (role) {
+    case "ADMIN":
+      return "Best for showing analytics, team controls, launch readiness, and role-aware settings.";
+    case "TEAM_LEAD":
+      return "Best for queue balancing, escalations, incidents, SLA risk, and operational handoff stories.";
+    case "SUPPORT_AGENT":
+      return "Best for frontline ticket handling, comments, customer context, and daily workflow updates.";
+  }
 }

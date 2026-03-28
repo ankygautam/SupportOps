@@ -26,6 +26,8 @@ npm run dev
 ## Production env
 
 - `VITE_API_URL`
+- `VITE_DEMO_MODE`
+- `VITE_SHOWCASE_MODE`
 
 If `VITE_API_URL` is missing, the app falls back to `http://localhost:8080` in local development and shows a clear API configuration error in production.
 
@@ -57,6 +59,14 @@ npm run build:pages
 
 The app uses hash-based routing, which keeps deep links stable on static hosting platforms without custom rewrite rules.
 
+## Demo Accounts
+
+- `admin@supportops.dev` / `supportops`
+- `lead@supportops.dev` / `supportops`
+- `agent1@supportops.dev` / `supportops`
+
+See [`../docs/demo-guide.md`](/Users/ankygautam/Desktop/Project/SupportOps/docs/demo-guide.md) for role-by-role walkthrough guidance.
+
 ## Test Coverage
 
 Frontend tests use Vitest + React Testing Library and focus on:
@@ -71,6 +81,13 @@ Frontend tests use Vitest + React Testing Library and focus on:
 
 Shared test utilities and factories live in [`src/test`](/Users/ankygautam/Desktop/Project/SupportOps/frontend/src/test).
 
+## Maintenance Notes
+
+- Shared runtime flags live in [`src/app/config/features.ts`](/Users/ankygautam/Desktop/Project/SupportOps/frontend/src/app/config/features.ts).
+- Browser storage keys live in [`src/app/config/storage.ts`](/Users/ankygautam/Desktop/Project/SupportOps/frontend/src/app/config/storage.ts).
+- Architecture guidance lives in [`../docs/architecture-notes.md`](/Users/ankygautam/Desktop/Project/SupportOps/docs/architecture-notes.md).
+- Screenshot planning lives in [`../docs/screenshot-plan.md`](/Users/ankygautam/Desktop/Project/SupportOps/docs/screenshot-plan.md).
+
 ## CI
 
 Frontend CI is defined in [`../.github/workflows/frontend-ci.yml`](/Users/ankygautam/Desktop/Project/SupportOps/.github/workflows/frontend-ci.yml).
@@ -82,6 +99,7 @@ GitHub Pages deployment is defined in [`../.github/workflows/frontend-pages.yml`
 - Preferred landing page is persisted in backend settings and mirrored locally for restore after refresh/sign-in.
 - A global error boundary, retryable page errors, and session-expiry handling are included for smoother demo and deployment behavior.
 - A lightweight API connectivity notice appears on login and in-app when the backend is unavailable or `VITE_API_URL` is misconfigured.
+- Public showcase routes include `/demo`, `/about`, and `/launch-checklist` for guided walkthroughs and release-readiness presentation.
 
 ## Demo logins
 

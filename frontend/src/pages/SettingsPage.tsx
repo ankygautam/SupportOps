@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { queryStaleTimes } from "@/app/config/query";
+import { storageKeys } from "@/app/config/storage";
 import { Badge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageErrorState } from "@/components/ui/PageErrorState";
@@ -11,11 +13,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { defaultSettingsState, type SettingsState } from "@/data/settingsData";
+import { setLocalStorageItem } from "@/lib/browserStorage";
 
 export function SettingsPage() {
   const { user, hasRole } = useAuth();
   const { pushToast } = useToast();
-  const preferencesQuery = useApiQuery([], getUserPreferences, { enabled: true, initialData: defaultSettingsState });
+  const preferencesQuery = useApiQuery([], getUserPreferences, {
+    enabled: true,
+    initialData: defaultSettingsState,
+    staleTimeMs: queryStaleTimes.preferences,
+  });
   const [saved, setSaved] = useState<SettingsState>(defaultSettingsState);
   const [draft, setDraft] = useState<SettingsState>(defaultSettingsState);
   const [savedBadge, setSavedBadge] = useState("");
@@ -27,9 +34,7 @@ export function SettingsPage() {
 
     setSaved(preferencesQuery.data);
     setDraft(preferencesQuery.data);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("supportops:landing-page", preferencesQuery.data.display.defaultLandingPage);
-    }
+    setLocalStorageItem(storageKeys.landingPage, preferencesQuery.data.display.defaultLandingPage);
   }, [preferencesQuery.data]);
 
   function markSaved(label: string) {
@@ -42,8 +47,8 @@ export function SettingsPage() {
     const response = await updateUserPreferences(next);
     setSaved(response);
     setDraft(response);
-    if (section === "display" && typeof window !== "undefined") {
-      window.localStorage.setItem("supportops:landing-page", response.display.defaultLandingPage);
+    if (section === "display") {
+      setLocalStorageItem(storageKeys.landingPage, response.display.defaultLandingPage);
     }
     markSaved(label);
     pushToast({ tone: "success", title: `${label} saved`, description: "Your workspace preferences were updated successfully." });

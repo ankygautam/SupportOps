@@ -16,6 +16,7 @@ import com.supportops.backend.entity.User;
 import com.supportops.backend.enums.SlaState;
 import com.supportops.backend.enums.TicketPriority;
 import com.supportops.backend.enums.TicketStatus;
+import com.supportops.backend.exception.BadRequestException;
 import com.supportops.backend.repository.IncidentRepository;
 import com.supportops.backend.repository.SlaRecordRepository;
 import com.supportops.backend.repository.TicketCommentRepository;
@@ -60,14 +61,17 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     @Transactional(readOnly = true)
     public AnalyticsSummaryResponse getSummary(String range, String team) {
         validateRange(range);
-        List<Ticket> tickets = filterTicketsByTeam(team);
+        List<Ticket> allTickets = ticketRepository.findAllForAnalytics();
+        List<Ticket> tickets = filterTicketsByTeam(allTickets, team);
+        Map<String, Instant> firstResponseLookup = buildFirstResponseLookup(allTickets);
+        List<com.supportops.backend.entity.Incident> incidents = incidentRepository.findAll();
         int resolved = (int) tickets.stream()
                 .filter(ticket -> ticket.getStatus() == TicketStatus.RESOLVED || ticket.getStatus() == TicketStatus.CLOSED)
                 .count();
         int previousResolved = Math.max(0, resolved - Math.max(1, resolved / 5));
 
         long avgResponseMinutes = Math.round(tickets.stream()
-                .mapToLong(this::firstResponseMinutes)
+                .mapToLong(ticket -> firstResponseMinutes(ticket, firstResponseLookup))
                 .average()
                 .orElse(0));
         long previousAvgResponseMinutes = Math.max(5, avgResponseMinutes + 6);
@@ -80,7 +84,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         long compliance = totalSla == 0 ? 100 : Math.round((metSla * 100.0f) / totalSla);
         long previousCompliance = Math.max(72, compliance - 4);
 
-        int activeIncidents = (int) incidentRepository.findAll().stream()
+        int activeIncidents = (int) incidents.stream()
                 .filter(incident -> incident.getResolvedAt() == null)
                 .filter(incident -> "All Teams".equalsIgnoreCase(team) || incident.getOwner().getTeam().equalsIgnoreCase(team))
                 .count();
@@ -92,7 +96,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 .average()
                 .orElse(0));
         long reopenedCount = tickets.stream().filter(ticket -> ticket.getReopenedAt() != null).count();
-        long incidentFrequency = Math.max(1, incidentRepository.findAll().stream()
+        long incidentFrequency = Math.max(1, incidents.stream()
                 .filter(incident -> incident.getStartedAt() != null)
                 .count());
 
@@ -111,7 +115,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 buildVolumeTrend(range, tickets),
                 buildStatusDistribution(tickets),
                 buildPriorityDistribution(tickets),
-                buildWorkloadDistribution(team),
+                buildWorkloadDistribution(team, allTickets),
                 buildSlaPerformance(range),
                 buildComparisonMetrics(resolved, previousResolved, avgResponseMinutes, previousAvgResponseMinutes, compliance, previousCompliance, mttrMinutes, reopenedCount, tickets.size()),
                 buildImpactedCustomers(tickets),
@@ -127,8 +131,14 @@ public class AnalyticsServiceImpl implements AnalyticsService {
             users = users.filter(user -> user.getTeam().equalsIgnoreCase(team));
         }
 
+        List<Ticket> allTickets = ticketRepository.findAllForAnalytics();
+        Map<String, Instant> firstResponseLookup = buildFirstResponseLookup(allTickets);
+        Map<String, List<Ticket>> ticketsByAgent = allTickets.stream()
+                .filter(ticket -> ticket.getAssignedAgent() != null)
+                .collect(LinkedHashMap::new, (map, ticket) -> map.computeIfAbsent(ticket.getAssignedAgent().getId(), ignored -> new ArrayList<>()).add(ticket), LinkedHashMap::putAll);
+
         List<TeamPerformanceRowResponse> rows = users
-                .map(this::toTeamRow)
+                .map(user -> toTeamRow(user, ticketsByAgent.getOrDefault(user.getId(), List.of()), firstResponseLookup))
                 .sorted(Comparator.comparing(TeamPerformanceRowResponse::team).thenComparing(TeamPerformanceRowResponse::agent))
                 .toList();
 
@@ -139,7 +149,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     @Transactional(readOnly = true)
     public AnalyticsIssuesResponse getIssues(String range, String team) {
         validateRange(range);
-        List<Ticket> tickets = filterTicketsByTeam(team);
+        List<Ticket> tickets = filterTicketsByTeam(ticketRepository.findAllForAnalytics(), team);
         Map<String, Integer> categories = new LinkedHashMap<>();
         categories.put("Login / Authentication", 0);
         categories.put("Billing", 0);
@@ -187,12 +197,12 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         return new AnalyticsIssuesResponse(categoryResponses, insights);
     }
 
-    private List<Ticket> filterTicketsByTeam(String team) {
+    private List<Ticket> filterTicketsByTeam(List<Ticket> tickets, String team) {
         if (team == null || team.isBlank() || "All Teams".equalsIgnoreCase(team)) {
-            return ticketRepository.findAll();
+            return tickets;
         }
 
-        return ticketRepository.findAll().stream()
+        return tickets.stream()
                 .filter(ticket -> ticket.getAssignedAgent() != null)
                 .filter(ticket -> ticket.getAssignedAgent().getTeam().equalsIgnoreCase(team))
                 .toList();
@@ -211,14 +221,25 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     private void validateRange(String range) {
         if (!List.of("7d", "30d", "90d").contains(range)) {
-            throw new IllegalArgumentException("Unsupported analytics range.");
+            throw new BadRequestException("Unsupported analytics range.");
         }
     }
 
-    private long firstResponseMinutes(Ticket ticket) {
-        Instant firstResponseAt = ticketCommentRepository.findFirstByTicketIdOrderByCreatedAtAsc(ticket.getId())
-                .map(comment -> comment.getCreatedAt())
-                .orElse(ticket.getUpdatedAt());
+    private Map<String, Instant> buildFirstResponseLookup(List<Ticket> tickets) {
+        if (tickets.isEmpty()) {
+            return Map.of();
+        }
+
+        List<String> ticketIds = tickets.stream().map(Ticket::getId).toList();
+        Map<String, Instant> result = new LinkedHashMap<>();
+        for (Object[] row : ticketCommentRepository.findFirstCommentTimesByTicketIds(ticketIds)) {
+            result.put((String) row[0], (Instant) row[1]);
+        }
+        return result;
+    }
+
+    private long firstResponseMinutes(Ticket ticket, Map<String, Instant> firstResponseLookup) {
+        Instant firstResponseAt = firstResponseLookup.getOrDefault(ticket.getId(), ticket.getUpdatedAt());
 
         if (ticket.getCreatedAt() == null || firstResponseAt == null || firstResponseAt.isBefore(ticket.getCreatedAt())) {
             return 0;
@@ -227,13 +248,12 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         return Duration.between(ticket.getCreatedAt(), firstResponseAt).toMinutes();
     }
 
-    private TeamPerformanceRowResponse toTeamRow(User user) {
-        List<Ticket> assignedTickets = ticketRepository.findByAssignedAgentId(user.getId());
+    private TeamPerformanceRowResponse toTeamRow(User user, List<Ticket> assignedTickets, Map<String, Instant> firstResponseLookup) {
         int assigned = assignedTickets.size();
         int resolved = (int) assignedTickets.stream()
                 .filter(ticket -> ticket.getStatus() == TicketStatus.RESOLVED || ticket.getStatus() == TicketStatus.CLOSED)
                 .count();
-        long avgResponse = Math.round(assignedTickets.stream().mapToLong(this::firstResponseMinutes).average().orElse(0));
+        long avgResponse = Math.round(assignedTickets.stream().mapToLong(ticket -> firstResponseMinutes(ticket, firstResponseLookup)).average().orElse(0));
         long totalSla = assignedTickets.stream().filter(ticket -> ticket.getSlaRecord() != null).count();
         long successfulSla = assignedTickets.stream()
                 .filter(ticket -> ticket.getSlaRecord() != null)
@@ -325,7 +345,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         return trend;
     }
 
-    private List<DistributionItemResponse> buildWorkloadDistribution(String team) {
+    private List<DistributionItemResponse> buildWorkloadDistribution(String team, List<Ticket> allTickets) {
         Stream<User> users = userRepository.findByActiveTrueOrderByFullNameAsc().stream();
         if (!"All Teams".equalsIgnoreCase(team)) {
             users = users.filter(user -> user.getTeam().equalsIgnoreCase(team));
@@ -333,7 +353,9 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
         return users
                 .map(user -> {
-                    int openCount = (int) ticketRepository.findByAssignedAgentId(user.getId()).stream()
+                    int openCount = (int) allTickets.stream()
+                            .filter(ticket -> ticket.getAssignedAgent() != null)
+                            .filter(ticket -> ticket.getAssignedAgent().getId().equals(user.getId()))
                             .filter(ticket -> ticket.getStatus() == TicketStatus.NEW
                                     || ticket.getStatus() == TicketStatus.IN_PROGRESS
                                     || ticket.getStatus() == TicketStatus.WAITING_ON_CUSTOMER)

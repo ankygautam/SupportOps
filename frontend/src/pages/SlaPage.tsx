@@ -1,4 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { queryStaleTimes } from "@/app/config/query";
 import { QueueHealthWidget } from "@/components/sla/QueueHealthWidget";
 import { SlaDetailPanel } from "@/components/sla/SlaDetailPanel";
 import { SlaFiltersBar, type SlaFiltersState } from "@/components/sla/SlaFiltersBar";
@@ -43,7 +44,10 @@ export function SlaPage() {
   const [selectedRow, setSelectedRow] = useState<SlaQueueRow | null>(null);
   const deferredSearch = useDeferredValue(search);
 
-  const usersQuery = useApiQuery([], async () => (await getUsers()).map(mapUser), { enabled: true });
+  const usersQuery = useApiQuery([], async () => (await getUsers()).map(mapUser), {
+    enabled: true,
+    staleTimeMs: queryStaleTimes.directory,
+  });
   const queueQuery = useApiQuery(
     [deferredSearch, filters.team, filters.state, usersQuery.data?.length],
     async () => {
@@ -78,21 +82,29 @@ export function SlaPage() {
     setSelectedRow((current) => (current && allRows.some((row) => row.ticketId === current.ticketId) ? current : allRows[0]));
   }, [allRows]);
 
-  const onTrack = queueQuery.data?.summary.onTrack ?? 0;
-  const dueSoon = queueQuery.data?.summary.dueSoon ?? 0;
-  const breached = queueQuery.data?.summary.breached ?? 0;
-  const avgResolutionTime = averageResolutionTimeLabel(allRows, queueQuery.data?.summary.averageResolutionMinutes);
+  const summaryMetrics = useMemo(() => {
+    const onTrack = queueQuery.data?.summary.onTrack ?? 0;
+    const dueSoon = queueQuery.data?.summary.dueSoon ?? 0;
+    const breached = queueQuery.data?.summary.breached ?? 0;
+
+    return {
+      onTrack,
+      dueSoon,
+      breached,
+      avgResolutionTime: averageResolutionTimeLabel(allRows, queueQuery.data?.summary.averageResolutionMinutes),
+      trend: [
+        { day: "Mon", breached: Math.max(breached - 1, 0), resolved: Math.max(onTrack - 3, 1) },
+        { day: "Tue", breached: Math.max(breached - 1, 0), resolved: Math.max(onTrack - 1, 1) },
+        { day: "Wed", breached, resolved: Math.max(onTrack, 1) },
+        { day: "Thu", breached: Math.max(breached - 1, 0), resolved: Math.max(onTrack + dueSoon, 1) },
+        { day: "Fri", breached, resolved: Math.max(onTrack, 1) },
+        { day: "Sat", breached: Math.max(breached - 2, 0), resolved: Math.max(onTrack - 2, 1) },
+        { day: "Sun", breached: Math.max(breached - 1, 0), resolved: Math.max(onTrack - 1, 1) },
+      ],
+    };
+  }, [allRows, queueQuery.data?.summary.averageResolutionMinutes, queueQuery.data?.summary.breached, queueQuery.data?.summary.dueSoon, queueQuery.data?.summary.onTrack]);
   const loading = usersQuery.loading || queueQuery.loading;
   const error = usersQuery.error || queueQuery.error;
-  const trend = [
-    { day: "Mon", breached: Math.max(breached - 1, 0), resolved: Math.max(onTrack - 3, 1) },
-    { day: "Tue", breached: Math.max(breached - 1, 0), resolved: Math.max(onTrack - 1, 1) },
-    { day: "Wed", breached, resolved: Math.max(onTrack, 1) },
-    { day: "Thu", breached: Math.max(breached - 1, 0), resolved: Math.max(onTrack + dueSoon, 1) },
-    { day: "Fri", breached, resolved: Math.max(onTrack, 1) },
-    { day: "Sat", breached: Math.max(breached - 2, 0), resolved: Math.max(onTrack - 2, 1) },
-    { day: "Sun", breached: Math.max(breached - 1, 0), resolved: Math.max(onTrack - 1, 1) },
-  ];
 
   return (
     <div className="space-y-6">
@@ -109,12 +121,18 @@ export function SlaPage() {
         filters={<SlaFiltersBar filters={filters} teams={teamOptions} onChange={(next) => setUrlState(next)} />}
       />
 
-      <SlaStatsRow onTrack={onTrack} dueSoon={dueSoon} breached={breached} avgResolutionTime={avgResolutionTime} loading={loading} />
+      <SlaStatsRow
+        onTrack={summaryMetrics.onTrack}
+        dueSoon={summaryMetrics.dueSoon}
+        breached={summaryMetrics.breached}
+        avgResolutionTime={summaryMetrics.avgResolutionTime}
+        loading={loading}
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="default">{allRows.length} queue items visible</Badge>
-        <Badge tone="warning">{dueSoon} due soon</Badge>
-        <Badge tone="danger">{breached} breached</Badge>
+        <Badge tone="warning">{summaryMetrics.dueSoon} due soon</Badge>
+        <Badge tone="danger">{summaryMetrics.breached} breached</Badge>
       </div>
 
       {error ? (
@@ -132,8 +150,12 @@ export function SlaPage() {
           <div className="space-y-6">
             <SlaDetailPanel row={selectedRow} />
             <SlaPriorityBreakdownCard rows={allRows} />
-            <SlaTrendWidget trend={trend} />
-            <QueueHealthWidget onTrack={onTrack} dueSoon={dueSoon} breached={breached} />
+            <SlaTrendWidget trend={summaryMetrics.trend} />
+            <QueueHealthWidget
+              onTrack={summaryMetrics.onTrack}
+              dueSoon={summaryMetrics.dueSoon}
+              breached={summaryMetrics.breached}
+            />
           </div>
         </div>
       )}

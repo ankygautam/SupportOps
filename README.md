@@ -74,6 +74,7 @@ The product currently includes:
 Structure highlights:
 
 - `frontend/src/api` for typed API services
+- `frontend/src/app/config` for options, storage keys, and feature toggles
 - `frontend/src/test` for reusable frontend test utilities and behavior-focused Vitest coverage
 - `frontend/src/components` for reusable UI and feature modules
 - `frontend/src/contexts` for auth and toast state
@@ -103,6 +104,7 @@ Structure highlights:
 
 - `/demo` guided demo entry with role-based sign-in options
 - `/about` project overview and architecture summary
+- `/launch-checklist` release-readiness summary for demo, docs, env, and verification coverage
 - `/dashboard` operational snapshot
 - `/tickets` queue management and saved views
 - `/tickets/:id` detailed case workspace
@@ -130,9 +132,19 @@ Add screenshots here when presenting the project:
 Suggested captions:
 
 - Secure JWT-backed login and role-aware entry
+- Launch readiness page for final demo and deployment review
 - Premium support queue with workflow-safe actions
 - Incident command view with linked customer impact
 - Leadership analytics and operational comparison view
+
+## Internal Notes
+
+- Architecture notes: [`docs/architecture-notes.md`](/Users/ankygautam/Desktop/Project/SupportOps/docs/architecture-notes.md)
+- UI system notes: [`docs/ui-system.md`](/Users/ankygautam/Desktop/Project/SupportOps/docs/ui-system.md)
+- Forward roadmap: [`docs/roadmap.md`](/Users/ankygautam/Desktop/Project/SupportOps/docs/roadmap.md)
+- Setup guide: [`docs/setup-guide.md`](/Users/ankygautam/Desktop/Project/SupportOps/docs/setup-guide.md)
+- Demo guide: [`docs/demo-guide.md`](/Users/ankygautam/Desktop/Project/SupportOps/docs/demo-guide.md)
+- Screenshot plan: [`docs/screenshot-plan.md`](/Users/ankygautam/Desktop/Project/SupportOps/docs/screenshot-plan.md)
 
 ## Local Setup
 
@@ -152,6 +164,12 @@ Suggested captions:
 ```bash
 cd backend
 mvn spring-boot:run
+```
+
+Optional local database shortcut:
+
+```bash
+docker compose up -d postgres
 ```
 
 ### Frontend
@@ -176,11 +194,32 @@ npm install
 npm run dev
 ```
 
+## Root-Level Commands
+
+If you prefer running from the repository root, use the included `Makefile`:
+
+```bash
+make db-up
+make backend-dev
+make frontend-dev
+```
+
+Other useful targets:
+
+- `make frontend-lint`
+- `make frontend-test`
+- `make frontend-build`
+- `make backend-test`
+- `make backend-build`
+- `make check`
+
 ## Environment Variables
 
 ### Frontend
 
 - `VITE_API_URL`
+- `VITE_DEMO_MODE`
+- `VITE_SHOWCASE_MODE`
 
 ### Backend
 
@@ -209,6 +248,19 @@ Example env files:
 - `admin@supportops.dev` / `supportops`
 - `lead@supportops.dev` / `supportops`
 - `agent1@supportops.dev` / `supportops`
+
+## Demo Account Reference
+
+- `Admin`: full platform walkthrough, analytics, team management, settings, and launch readiness
+- `Team Lead`: queue balancing, escalations, incidents, SLA monitoring, and operational handoffs
+- `Support Agent`: frontline ticket work, comments, internal notes, customer context, and status updates
+
+## Demo Flow
+
+1. Open `/demo` for the guided entry experience.
+2. Choose `Admin` for the broadest walkthrough or `Team Lead` for the strongest queue-and-incident story.
+3. Use `/launch-checklist` when presenting deployment readiness, docs coverage, and verification status.
+4. Capture hero screens from dashboard, tickets, ticket detail, incidents, analytics, and team management.
 
 ## Deployment Notes
 
@@ -278,6 +330,8 @@ If you want to present the project quickly:
 6. Open Team to show role-aware admin tooling
 7. Open Analytics and Settings to show operational depth and persisted preferences
 
+See the fuller demo script in [`docs/demo-guide.md`](/Users/ankygautam/Desktop/Project/SupportOps/docs/demo-guide.md).
+
 ## Architecture Overview
 
 SupportOps is structured as a real two-part product:
@@ -332,6 +386,7 @@ Representative endpoints:
 - Backend tests cover JWT auth basics, ticket workflow rules, comment creation, incidents, customers, SLA logic, and controller validation
 - Auth restore, protected routes, seeded roles, and typed API integration are wired for realistic demo use
 - A deployment checklist is included in [`docs/deployment-checklist.md`](/Users/ankygautam/Desktop/Project/SupportOps/docs/deployment-checklist.md)
+- A screenshot capture plan is included in [`docs/screenshot-plan.md`](/Users/ankygautam/Desktop/Project/SupportOps/docs/screenshot-plan.md)
 
 ## Case Study Notes
 

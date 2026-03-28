@@ -6,14 +6,18 @@ import com.supportops.backend.dto.customer.CustomerSummaryResponse;
 import com.supportops.backend.entity.Customer;
 import com.supportops.backend.enums.CustomerHealth;
 import com.supportops.backend.enums.CustomerSegment;
+import com.supportops.backend.enums.TicketStatus;
+import com.supportops.backend.exception.BadRequestException;
 import com.supportops.backend.exception.ResourceNotFoundException;
 import com.supportops.backend.mapper.CustomerMapper;
 import com.supportops.backend.repository.CustomerRepository;
 import com.supportops.backend.repository.TicketRepository;
 import com.supportops.backend.service.CustomerService;
 import com.supportops.backend.utils.QueryUtils;
-import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,40 +42,88 @@ public class CustomerServiceImpl implements CustomerService {
     @Transactional(readOnly = true)
     public List<CustomerSummaryResponse> getCustomers(CustomerQuery query) {
         String normalizedQuery = QueryUtils.normalizeSearch(query.q());
-        List<Customer> customers = normalizedQuery.isBlank()
-                ? customerRepository.findAll()
-                : customerRepository.findByNameContainingIgnoreCaseOrCompanyContainingIgnoreCaseOrderByUpdatedAtDesc(normalizedQuery, normalizedQuery);
+        CustomerSegment segment = parseSegment(query.segment());
+        CustomerHealth health = parseHealth(query.health());
+        List<Customer> customers;
+        if (segment == null && health == null && normalizedQuery.isBlank()) {
+            customers = customerRepository.findAll();
+        } else if (segment == null && health == null) {
+            customers = customerRepository.findByNameContainingIgnoreCaseOrCompanyContainingIgnoreCaseOrderByUpdatedAtDesc(normalizedQuery, normalizedQuery);
+        } else {
+            customers = customerRepository.searchCustomers(normalizedQuery, segment, health);
+        }
+        Map<String, Long> openTicketCounts = countOpenTicketsByCustomerIds(customers.stream().map(Customer::getId).toList());
 
         return customers.stream()
-                .filter(customer -> normalizedQuery.isBlank() || customer.getEmail().toLowerCase().contains(normalizedQuery)
-                        || customer.getName().toLowerCase().contains(normalizedQuery)
-                        || customer.getCompany().toLowerCase().contains(normalizedQuery))
-                .filter(customer -> QueryUtils.isBlank(query.segment()) || customer.getSegment().name().equalsIgnoreCase(query.segment()))
-                .filter(customer -> QueryUtils.isBlank(query.health()) || customer.getHealth().name().equalsIgnoreCase(query.health()))
-                .sorted(Comparator.comparing(Customer::getUpdatedAt).reversed())
-                .map(customer -> customerMapper.toSummary(customer, countOpenTickets(customer.getId())))
+                .map(customer -> customerMapper.toSummary(customer, openTicketCounts.getOrDefault(customer.getId(), 0L)))
                 .toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public CustomerDetailResponse getCustomer(String id) {
-        Customer customer = customerRepository.findById(id)
+        Customer customer = customerRepository.findWithOwnerById(id)
+                .or(() -> customerRepository.findById(id))
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found."));
 
-        List<String> recentTicketIds = ticketRepository.findAll().stream()
-                .filter(ticket -> ticket.getCustomer().getId().equals(customer.getId()))
-                .sorted(Comparator.comparing(ticket -> ticket.getUpdatedAt(), Comparator.reverseOrder()))
-                .limit(5)
+        List<String> recentTickets = ticketRepository.findByCustomerIdOrderByUpdatedAtDesc(customer.getId(), PageRequest.of(0, 5)).stream()
                 .map(ticket -> ticket.getId())
                 .toList();
+        if (recentTickets.isEmpty()) {
+            recentTickets = ticketRepository.findByCustomerIdOrderByUpdatedAtDesc(customer.getId()).stream()
+                    .limit(5)
+                    .map(ticket -> ticket.getId())
+                    .toList();
+        }
 
-        return customerMapper.toDetail(customer, countOpenTickets(customer.getId()), recentTicketIds);
+        return customerMapper.toDetail(customer, countOpenTicketsByCustomerIds(List.of(customer.getId())).getOrDefault(customer.getId(), 0L), recentTickets);
     }
 
-    private long countOpenTickets(String customerId) {
-        return ticketRepository.findByCustomerIdOrderByUpdatedAtDesc(customerId).stream()
-                .filter(ticket -> !ticket.getStatus().name().equals("RESOLVED") && !ticket.getStatus().name().equals("CLOSED"))
-                .count();
+    private Map<String, Long> countOpenTicketsByCustomerIds(List<String> customerIds) {
+        if (customerIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, Long> counts = ticketRepository.countOpenTicketsByCustomerIds(customerIds, List.of(TicketStatus.RESOLVED, TicketStatus.CLOSED)).stream()
+                .collect(Collectors.toMap(
+                        row -> (String) row[0],
+                        row -> (Long) row[1]
+                ));
+
+        if (!counts.isEmpty()) {
+            return counts;
+        }
+
+        return customerIds.stream()
+                .collect(Collectors.toMap(
+                        customerId -> customerId,
+                        customerId -> ticketRepository.findByCustomerIdOrderByUpdatedAtDesc(customerId).stream()
+                                .filter(ticket -> ticket.getStatus() != TicketStatus.RESOLVED && ticket.getStatus() != TicketStatus.CLOSED)
+                                .count()
+                ));
+    }
+
+    private CustomerSegment parseSegment(String segment) {
+        if (QueryUtils.isBlank(segment)) {
+            return null;
+        }
+
+        try {
+            return CustomerSegment.valueOf(segment.trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new BadRequestException("Invalid customer segment filter.");
+        }
+    }
+
+    private CustomerHealth parseHealth(String health) {
+        if (QueryUtils.isBlank(health)) {
+            return null;
+        }
+
+        try {
+            return CustomerHealth.valueOf(health.trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new BadRequestException("Invalid customer health filter.");
+        }
     }
 }

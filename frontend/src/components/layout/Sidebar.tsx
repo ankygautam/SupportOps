@@ -1,8 +1,12 @@
 import {
+  ClipboardCheck,
+  Compass,
   LogOut,
+  NotebookTabs,
   X,
 } from "lucide-react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import { appFeatureFlags } from "@/app/config/features";
 import { Button } from "@/components/forms/Button";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/cn";
@@ -89,6 +93,32 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
             );
           })}
         </nav>
+
+        {appFeatureFlags.demoExperience ? (
+          <div className="mt-6 rounded-3xl border border-slate-800 bg-slate-900/70 p-4">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Showcase</p>
+            <div className="mt-3 space-y-2">
+              {[
+                { label: "Guided demo", to: "/demo", icon: Compass },
+                { label: "Launch checklist", to: "/launch-checklist", icon: ClipboardCheck },
+                { label: "Project overview", to: "/about", icon: NotebookTabs },
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={onClose}
+                    className="group flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3 text-sm font-medium text-slate-300 transition hover:border-slate-700 hover:bg-slate-900 hover:text-white"
+                  >
+                    <Icon className="h-4 w-4 text-slate-500 transition group-hover:text-sky-300" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-auto space-y-4">
           <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-4">

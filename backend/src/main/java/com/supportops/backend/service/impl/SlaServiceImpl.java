@@ -30,19 +30,13 @@ public class SlaServiceImpl implements SlaService {
     @Transactional(readOnly = true)
     public List<SlaRecordResponse> getSlaRecords(SlaQuery query) {
         String normalizedQuery = QueryUtils.normalizeSearch(query.q());
+        SlaState state = parseState(query.state());
 
-        List<com.supportops.backend.entity.SlaRecord> records = QueryUtils.isBlank(query.state())
-                ? slaRecordRepository.findAll()
-                : slaRecordRepository.findByStateOrderByResolutionTargetAtAsc(parseState(query.state()));
-
-        return records.stream()
-                .filter(record -> normalizedQuery.isBlank()
-                        || record.getTicket().getId().toLowerCase().contains(normalizedQuery)
-                        || record.getTicket().getSubject().toLowerCase().contains(normalizedQuery)
-                        || record.getTicket().getCustomer().getCompany().toLowerCase().contains(normalizedQuery))
-                .filter(record -> QueryUtils.isBlank(query.team())
-                        || (record.getTicket().getAssignedAgent() != null
-                        && record.getTicket().getAssignedAgent().getTeam().equalsIgnoreCase(query.team())))
+        return slaRecordRepository.searchRecords(
+                        normalizedQuery,
+                        QueryUtils.isBlank(query.team()) ? null : query.team().trim(),
+                        state
+                ).stream()
                 .sorted(Comparator.comparing(record -> record.getResolutionTargetAt()))
                 .map(slaMapper::toResponse)
                 .toList();
@@ -59,7 +53,10 @@ public class SlaServiceImpl implements SlaService {
     @Override
     @Transactional(readOnly = true)
     public SlaSummaryResponse getSummary() {
-        List<com.supportops.backend.entity.SlaRecord> records = slaRecordRepository.findAll();
+        List<com.supportops.backend.entity.SlaRecord> records = slaRecordRepository.findAllWithTicketContext();
+        if (records.isEmpty()) {
+            records = slaRecordRepository.findAll();
+        }
         long averageResolutionMinutes = Math.round(records.stream()
                 .mapToLong(record -> Duration.between(record.getTicket().getCreatedAt(), record.getResolutionTargetAt()).toMinutes())
                 .average()

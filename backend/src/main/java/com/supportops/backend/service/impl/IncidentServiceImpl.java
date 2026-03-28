@@ -8,6 +8,8 @@ import com.supportops.backend.dto.incident.UpdateIncidentRequest;
 import com.supportops.backend.entity.Incident;
 import com.supportops.backend.entity.Ticket;
 import com.supportops.backend.entity.User;
+import com.supportops.backend.enums.IncidentSeverity;
+import com.supportops.backend.enums.IncidentStatus;
 import com.supportops.backend.exception.BadRequestException;
 import com.supportops.backend.exception.ResourceNotFoundException;
 import com.supportops.backend.mapper.IncidentMapper;
@@ -57,14 +59,10 @@ public class IncidentServiceImpl implements IncidentService {
     @Transactional(readOnly = true)
     public List<IncidentSummaryResponse> getIncidents(IncidentQuery query) {
         String normalizedQuery = QueryUtils.normalizeSearch(query.q());
+        IncidentSeverity severity = parseSeverity(query.severity());
+        IncidentStatus status = parseStatus(query.status());
 
-        return incidentRepository.findAll().stream()
-                .filter(incident -> normalizedQuery.isBlank()
-                        || incident.getId().toLowerCase().contains(normalizedQuery)
-                        || incident.getTitle().toLowerCase().contains(normalizedQuery)
-                        || incident.getAffectedService().toLowerCase().contains(normalizedQuery))
-                .filter(incident -> QueryUtils.isBlank(query.severity()) || incident.getSeverity().name().equalsIgnoreCase(query.severity()))
-                .filter(incident -> QueryUtils.isBlank(query.status()) || incident.getStatus().name().equalsIgnoreCase(query.status()))
+        return incidentRepository.searchIncidents(normalizedQuery, severity, status).stream()
                 .sorted(Comparator.comparing(Incident::getStartedAt).reversed())
                 .map(incidentMapper::toSummary)
                 .toList();
@@ -165,8 +163,33 @@ public class IncidentServiceImpl implements IncidentService {
     }
 
     private Incident getIncidentEntity(String id) {
-        return incidentRepository.findById(id)
+        return incidentRepository.findDetailedById(id)
+                .or(() -> incidentRepository.findById(id))
                 .orElseThrow(() -> new ResourceNotFoundException("Incident not found."));
+    }
+
+    private IncidentSeverity parseSeverity(String severity) {
+        if (QueryUtils.isBlank(severity)) {
+            return null;
+        }
+
+        try {
+            return IncidentSeverity.valueOf(severity.trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new BadRequestException("Invalid incident severity filter.");
+        }
+    }
+
+    private IncidentStatus parseStatus(String status) {
+        if (QueryUtils.isBlank(status)) {
+            return null;
+        }
+
+        try {
+            return IncidentStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new BadRequestException("Invalid incident status filter.");
+        }
     }
 
     private void syncLinkedTickets(Incident incident, List<String> linkedTicketIds, String actorName) {

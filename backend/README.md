@@ -45,6 +45,12 @@ Spring Boot backend for the SupportOps support operations platform.
 mvn spring-boot:run
 ```
 
+If you want a quick local database, start PostgreSQL from the repo root:
+
+```bash
+docker compose up -d postgres
+```
+
 You can copy the example env file first:
 
 ```bash
@@ -72,6 +78,8 @@ Profile files:
 - `admin@supportops.dev` / `supportops`
 - `lead@supportops.dev` / `supportops`
 - `agent1@supportops.dev` / `supportops`
+
+Role guidance lives in [`../docs/demo-guide.md`](/Users/ankygautam/Desktop/Project/SupportOps/docs/demo-guide.md).
 
 ## Seeded APIs
 

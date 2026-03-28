@@ -1,5 +1,6 @@
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { Filter } from "lucide-react";
+import { queryStaleTimes } from "@/app/config/query";
 import { CustomerDrawer } from "@/components/customers/CustomerDrawer";
 import { CustomersFiltersBar, type CustomersFiltersState } from "@/components/customers/CustomersFiltersBar";
 import { CustomersStatsRow } from "@/components/customers/CustomersStatsRow";
@@ -53,7 +54,10 @@ export function CustomersPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const deferredSearch = useDeferredValue(search);
 
-  const usersQuery = useApiQuery([], async () => (await getUsers()).map(mapUser), { enabled: true });
+  const usersQuery = useApiQuery([], async () => (await getUsers()).map(mapUser), {
+    enabled: true,
+    staleTimeMs: queryStaleTimes.directory,
+  });
   const customersQuery = useApiQuery(
     [deferredSearch, filters.segment, filters.health, usersQuery.data?.length],
     async () => {
@@ -85,11 +89,17 @@ export function CustomersPage() {
     { enabled: Boolean(selectedCustomerId) && Boolean(usersQuery.data) },
   );
 
-  const customers = customersQuery.data ?? [];
-  const totalCustomers = customers.length;
-  const atRiskAccounts = customers.filter((customer) => customer.health === "At Risk").length;
-  const enterpriseAccounts = customers.filter((customer) => customer.segment === "Enterprise").length;
-  const recentTickets = customers.reduce((sum, customer) => sum + customer.openTickets, 0);
+  const customers = useMemo(() => customersQuery.data ?? [], [customersQuery.data]);
+  const customerStats = useMemo(
+    () => ({
+      totalCustomers: customers.length,
+      atRiskAccounts: customers.filter((customer) => customer.health === "At Risk").length,
+      enterpriseAccounts: customers.filter((customer) => customer.segment === "Enterprise").length,
+      recentTickets: customers.reduce((sum, customer) => sum + customer.openTickets, 0),
+      watchlistCount: customers.filter((customer) => customer.health === "Watchlist").length,
+    }),
+    [customers],
+  );
   const loading = usersQuery.loading || customersQuery.loading;
   const error = usersQuery.error || customersQuery.error;
 
@@ -117,17 +127,17 @@ export function CustomersPage() {
       />
 
       <CustomersStatsRow
-        totalCustomers={totalCustomers}
-        atRiskAccounts={atRiskAccounts}
-        enterpriseAccounts={enterpriseAccounts}
-        recentTickets={recentTickets}
+        totalCustomers={customerStats.totalCustomers}
+        atRiskAccounts={customerStats.atRiskAccounts}
+        enterpriseAccounts={customerStats.enterpriseAccounts}
+        recentTickets={customerStats.recentTickets}
         loading={loading}
       />
 
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="default">{customers.length} customers visible</Badge>
-        <Badge tone="warning">{customers.filter((customer) => customer.health === "Watchlist").length} watchlist</Badge>
-        <Badge tone="danger">{atRiskAccounts} at risk</Badge>
+        <Badge tone="warning">{customerStats.watchlistCount} watchlist</Badge>
+        <Badge tone="danger">{customerStats.atRiskAccounts} at risk</Badge>
       </div>
 
       {error ? (

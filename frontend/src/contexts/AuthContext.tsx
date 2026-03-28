@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { clearStoredToken, getMe, getStoredToken, login, storeToken } from "@/api";
 import { mapUser } from "@/api/mappers";
+import { storageKeys } from "@/app/config/storage";
+import { removeLocalStorageItem, setLocalStorageItem } from "@/lib/browserStorage";
 import type { ApiRole, User } from "@/types/models";
 
 interface SignInPayload {
@@ -65,9 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearStoredToken();
       setUser(null);
       setIsLoading(false);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("supportops:auth-feedback", "Your session expired. Sign in again to continue.");
-      }
+      setLocalStorageItem(storageKeys.authFeedback, "Your session expired. Sign in again to continue.");
     }
 
     window.addEventListener("supportops:unauthorized", handleUnauthorized);
@@ -94,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearStoredToken();
     setUser(null);
     setIsLoading(false);
+    removeLocalStorageItem(storageKeys.authFeedback);
   }
 
   const hasRole = useCallback((...roles: ApiRole[]) => {

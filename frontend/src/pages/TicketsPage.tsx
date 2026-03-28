@@ -1,6 +1,8 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Filter, Plus, RefreshCcw, UserRound } from "lucide-react";
+import { queryStaleTimes } from "@/app/config/query";
 import { defaultTablePageSizes } from "@/app/config/options";
+import { storageKeys } from "@/app/config/storage";
 import { Button } from "@/components/forms/Button";
 import { SelectField } from "@/components/forms/SelectField";
 import { DataTablePagination } from "@/components/tables/DataTablePagination";
@@ -17,6 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { useUrlQueryState } from "@/hooks/useUrlQueryState";
+import { getLocalStorageItem, removeLocalStorageItem, setLocalStorageItem } from "@/lib/browserStorage";
 import { matchesDateRange } from "@/lib/tickets";
 
 const emptyFilters: TicketFiltersState = {
@@ -99,7 +102,7 @@ function sortTickets<T extends { updatedAtValue: string; dueAtValue: string; pri
 export function TicketsPage() {
   const { user } = useAuth();
   const { pushToast } = useToast();
-  const initialSavedView = typeof window === "undefined" ? "" : window.localStorage.getItem("supportops:tickets-view") ?? "";
+  const initialSavedView = getLocalStorageItem(storageKeys.ticketsView) ?? "";
   const { state: urlState, setState: setUrlState } = useUrlQueryState({
     q: "",
     status: "",
@@ -158,7 +161,7 @@ export function TicketsPage() {
       const customers = customerDtos.map((customer) => mapCustomer(customer, users));
       return { users, customers };
     },
-    { enabled: true },
+    { enabled: true, staleTimeMs: queryStaleTimes.directory },
   );
 
   const ticketsQuery = useApiQuery(
@@ -216,12 +219,12 @@ export function TicketsPage() {
   function applySavedView(viewId: string) {
     const nextView = savedViews.find((view) => view.id === viewId);
     if (!nextView) {
-      localStorage.removeItem("supportops:tickets-view");
+      removeLocalStorageItem(storageKeys.ticketsView);
       setUrlState({ view: "", page: 1 });
       return;
     }
 
-    localStorage.setItem("supportops:tickets-view", viewId);
+    setLocalStorageItem(storageKeys.ticketsView, viewId);
     setUrlState({
       view: viewId,
       q: nextView.query ?? "",
@@ -322,7 +325,7 @@ export function TicketsPage() {
             setUrlState({ ...next, page: 1, view: "" });
           }}
           onClear={() => {
-            localStorage.removeItem("supportops:tickets-view");
+            removeLocalStorageItem(storageKeys.ticketsView);
             setUrlState({ ...emptyFilters, q: "", page: 1, view: "" });
           }}
         />
@@ -352,7 +355,7 @@ export function TicketsPage() {
             <button
               type="button"
               onClick={() => {
-                localStorage.removeItem("supportops:tickets-view");
+                removeLocalStorageItem(storageKeys.ticketsView);
                 setUrlState({ ...emptyFilters, q: "", page: 1, view: "" });
               }}
               className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50"

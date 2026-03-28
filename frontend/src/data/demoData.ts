@@ -63,6 +63,7 @@ export const showcaseQuickLinks = [
   { label: "SLA", to: "/sla" },
   { label: "Analytics", to: "/analytics" },
   { label: "Team", to: "/team" },
+  { label: "Launch", to: "/launch-checklist" },
 ];
 
 export const productTourByRoute: Record<string, { title: string; description: string; bullets: string[] }> = {

@@ -1,41 +1,51 @@
+import { Suspense, lazy, type ReactNode } from "react";
 import { Navigate, createHashRouter } from "react-router-dom";
+import { storageKeys } from "@/app/config/storage";
 import { RedirectIfAuthenticated, RequireAuth, RequireRole } from "@/components/auth/RouteGuards";
+import { RouteLoadingScreen } from "@/components/ui/RouteLoadingScreen";
 import { AppLayout } from "@/layouts/AppLayout";
-import { AnalyticsPage } from "@/pages/AnalyticsPage";
-import { AboutProjectPage } from "@/pages/AboutProjectPage";
-import { CustomersPage } from "@/pages/CustomersPage";
-import { DashboardPage } from "@/pages/DashboardPage";
-import { DemoPage } from "@/pages/DemoPage";
-import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
-import { IncidentsPage } from "@/pages/IncidentsPage";
+import { getLocalStorageItem } from "@/lib/browserStorage";
 import { LoginPage } from "@/pages/LoginPage";
-import { NotFoundPage } from "@/pages/NotFoundPage";
-import { SettingsPage } from "@/pages/SettingsPage";
-import { SlaPage } from "@/pages/SlaPage";
-import { TeamPage } from "@/pages/TeamPage";
-import { TicketDetailPage } from "@/pages/TicketDetailPage";
-import { TicketsPage } from "@/pages/TicketsPage";
+
+const AboutProjectPage = lazy(() => import("@/pages/AboutProjectPage").then((module) => ({ default: module.AboutProjectPage })));
+const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
+const CustomersPage = lazy(() => import("@/pages/CustomersPage").then((module) => ({ default: module.CustomersPage })));
+const DashboardPage = lazy(() => import("@/pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
+const DemoPage = lazy(() => import("@/pages/DemoPage").then((module) => ({ default: module.DemoPage })));
+const ForgotPasswordPage = lazy(() => import("@/pages/ForgotPasswordPage").then((module) => ({ default: module.ForgotPasswordPage })));
+const IncidentsPage = lazy(() => import("@/pages/IncidentsPage").then((module) => ({ default: module.IncidentsPage })));
+const LaunchChecklistPage = lazy(() => import("@/pages/LaunchChecklistPage").then((module) => ({ default: module.LaunchChecklistPage })));
+const NotFoundPage = lazy(() => import("@/pages/NotFoundPage").then((module) => ({ default: module.NotFoundPage })));
+const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
+const SlaPage = lazy(() => import("@/pages/SlaPage").then((module) => ({ default: module.SlaPage })));
+const TeamPage = lazy(() => import("@/pages/TeamPage").then((module) => ({ default: module.TeamPage })));
+const TicketDetailPage = lazy(() => import("@/pages/TicketDetailPage").then((module) => ({ default: module.TicketDetailPage })));
+const TicketsPage = lazy(() => import("@/pages/TicketsPage").then((module) => ({ default: module.TicketsPage })));
+
+function suspensePage(element: ReactNode) {
+  return <Suspense fallback={<RouteLoadingScreen />}>{element}</Suspense>;
+}
 
 function preferredLandingPage() {
-  if (typeof window === "undefined") {
-    return "/dashboard";
-  }
-
-  return window.localStorage.getItem("supportops:landing-page") ?? "/dashboard";
+  return getLocalStorageItem(storageKeys.landingPage) ?? "/dashboard";
 }
 
 export const router = createHashRouter([
   {
     path: "/demo",
-    element: <DemoPage />,
+    element: suspensePage(<DemoPage />),
   },
   {
     path: "/about",
-    element: <AboutProjectPage />,
+    element: suspensePage(<AboutProjectPage />),
   },
   {
     path: "/project-info",
-    element: <AboutProjectPage />,
+    element: suspensePage(<AboutProjectPage />),
+  },
+  {
+    path: "/launch-checklist",
+    element: suspensePage(<LaunchChecklistPage />),
   },
   {
     element: <RedirectIfAuthenticated />,
@@ -46,7 +56,7 @@ export const router = createHashRouter([
       },
       {
         path: "/forgot-password",
-        element: <ForgotPasswordPage />,
+        element: suspensePage(<ForgotPasswordPage />),
       },
     ],
   },
@@ -63,33 +73,33 @@ export const router = createHashRouter([
           },
           {
             path: "dashboard",
-            element: <DashboardPage />,
+            element: suspensePage(<DashboardPage />),
           },
           {
             path: "tickets",
-            element: <TicketsPage />,
+            element: suspensePage(<TicketsPage />),
           },
           {
             path: "tickets/:id",
-            element: <TicketDetailPage />,
+            element: suspensePage(<TicketDetailPage />),
           },
           {
             path: "incidents",
             element: (
               <RequireRole allowedRoles={["ADMIN", "TEAM_LEAD"]}>
-                <IncidentsPage />
+                {suspensePage(<IncidentsPage />)}
               </RequireRole>
             ),
           },
           {
             path: "customers",
-            element: <CustomersPage />,
+            element: suspensePage(<CustomersPage />),
           },
           {
             path: "sla",
             element: (
               <RequireRole allowedRoles={["ADMIN", "TEAM_LEAD"]}>
-                <SlaPage />
+                {suspensePage(<SlaPage />)}
               </RequireRole>
             ),
           },
@@ -97,7 +107,7 @@ export const router = createHashRouter([
             path: "analytics",
             element: (
               <RequireRole allowedRoles={["ADMIN", "TEAM_LEAD"]}>
-                <AnalyticsPage />
+                {suspensePage(<AnalyticsPage />)}
               </RequireRole>
             ),
           },
@@ -105,13 +115,13 @@ export const router = createHashRouter([
             path: "team",
             element: (
               <RequireRole allowedRoles={["ADMIN", "TEAM_LEAD"]}>
-                <TeamPage />
+                {suspensePage(<TeamPage />)}
               </RequireRole>
             ),
           },
           {
             path: "settings",
-            element: <SettingsPage />,
+            element: suspensePage(<SettingsPage />),
           },
         ],
       },
@@ -119,6 +129,6 @@ export const router = createHashRouter([
   },
   {
     path: "*",
-    element: <NotFoundPage />,
+    element: suspensePage(<NotFoundPage />),
   },
 ]);

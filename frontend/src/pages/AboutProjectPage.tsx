@@ -47,6 +47,12 @@ export function AboutProjectPage() {
               >
                 Go to login
               </Link>
+              <Link
+                to="/launch-checklist"
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                Review launch checklist
+              </Link>
             </div>
           </div>
         </section>

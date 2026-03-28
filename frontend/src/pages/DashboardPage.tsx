@@ -111,7 +111,7 @@ export function DashboardPage() {
     );
   }
 
-  if (error || !data) {
+  if ((error && !data) || !data) {
     return (
       <PageErrorState
         title="Dashboard unavailable"

@@ -1,9 +1,16 @@
 import type { ApiErrorDto } from "@/types/api";
+import { storageKeys } from "@/app/config/storage";
+import {
+  getLocalStorageItem,
+  getSessionStorageItem,
+  removeLocalStorageItem,
+  removeSessionStorageItem,
+  setLocalStorageItem,
+  setSessionStorageItem,
+} from "@/lib/browserStorage";
 
 const configuredBaseUrl = import.meta.env.VITE_API_URL ?? import.meta.env.VITE_API_BASE_URL;
 const baseUrl = configuredBaseUrl || (import.meta.env.DEV ? "http://localhost:8080" : "");
-const persistentTokenStorageKey = "supportops-auth-token";
-const sessionTokenStorageKey = "supportops-auth-token:session";
 
 export type QueryValue = string | number | boolean | null | undefined;
 export type QueryParams = Record<string, QueryValue>;
@@ -21,35 +28,23 @@ export class ApiError extends Error {
 }
 
 export function getStoredToken() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return window.localStorage.getItem(persistentTokenStorageKey) ?? window.sessionStorage.getItem(sessionTokenStorageKey);
+  return getLocalStorageItem(storageKeys.authTokenPersistent) ?? getSessionStorageItem(storageKeys.authTokenSession);
 }
 
 export function storeToken(token: string, remember = true) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
   if (remember) {
-    window.localStorage.setItem(persistentTokenStorageKey, token);
-    window.sessionStorage.removeItem(sessionTokenStorageKey);
+    setLocalStorageItem(storageKeys.authTokenPersistent, token);
+    removeSessionStorageItem(storageKeys.authTokenSession);
     return;
   }
 
-  window.sessionStorage.setItem(sessionTokenStorageKey, token);
-  window.localStorage.removeItem(persistentTokenStorageKey);
+  setSessionStorageItem(storageKeys.authTokenSession, token);
+  removeLocalStorageItem(storageKeys.authTokenPersistent);
 }
 
 export function clearStoredToken() {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.removeItem(persistentTokenStorageKey);
-  window.sessionStorage.removeItem(sessionTokenStorageKey);
+  removeLocalStorageItem(storageKeys.authTokenPersistent);
+  removeSessionStorageItem(storageKeys.authTokenSession);
 }
 
 function buildUrl(path: string, query?: QueryParams) {
@@ -96,7 +91,11 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, query?
       ...init,
       headers,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+
     throw new ApiError(
       "SupportOps could not reach the API. Check that the backend is running and VITE_API_URL points to the correct origin.",
       0,
