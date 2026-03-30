@@ -115,6 +115,27 @@ mvn test
 mvn -DskipTests package
 ```
 
+## Render deploy
+
+If Render only shows `Docker` and not a Java runtime, deploy the backend as a Docker web service.
+
+Use these settings:
+
+- `Root Directory`: `backend`
+- `Environment`: `Docker`
+
+Required environment variables:
+
+- `DB_URL`
+- `DB_USERNAME`
+- `DB_PASSWORD`
+- `JWT_SECRET`
+- `FRONTEND_ORIGIN`
+- `SPRING_PROFILES_ACTIVE=demo`
+- `DEMO_MODE=true`
+
+The backend now reads `PORT` automatically, which matches Render web service expectations.
+
 Current backend coverage focuses on:
 
 - auth service login flow
